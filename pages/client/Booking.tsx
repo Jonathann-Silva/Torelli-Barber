@@ -1,10 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BARBERS } from '../../constants';
 import { useNotifications } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebaseConfig';
-import { Service } from '../../types';
+import { Service, Barber } from '../../types';
 
 const BookingStep1 = ({ onNext }: { onNext: () => void }) => {
   const [selectedService, setSelectedService] = useState<string>('');
@@ -167,11 +166,35 @@ const BookingStep1 = ({ onNext }: { onNext: () => void }) => {
 };
 
 const BookingStep2 = ({ onBack, onConfirm }: { onBack: () => void, onConfirm: () => void }) => {
-  const [selectedBarber, setSelectedBarber] = useState('1');
+  const [selectedBarber, setSelectedBarber] = useState('');
   const [selectedTime, setSelectedTime] = useState('11:00');
   const [loading, setLoading] = useState(false);
   const { sendNotification } = useNotifications();
   const { user } = useAuth();
+  
+  // Barber Logic
+  const [barbers, setBarbers] = useState<Barber[]>([]);
+
+  useEffect(() => {
+    const unsubscribe = db.collection('barbers').onSnapshot(snapshot => {
+      if (!snapshot.empty) {
+        const fetchedBarbers = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Barber[];
+        setBarbers(fetchedBarbers);
+        
+        // Auto select first barber
+        if (fetchedBarbers.length > 0 && !selectedBarber) {
+             setSelectedBarber(fetchedBarbers[0].id);
+        }
+      } else {
+        // Fallback or empty state
+        setBarbers([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
   
   // Calendar Logic State
   const [currentDate, setCurrentDate] = useState(new Date()); // Tracks the month being viewed
@@ -227,7 +250,7 @@ const BookingStep2 = ({ onBack, onConfirm }: { onBack: () => void, onConfirm: ()
           <span className="text-xs font-medium text-primary-blue uppercase tracking-wider cursor-pointer">Ver todos</span>
         </div>
         <div className="flex overflow-x-auto pb-4 pt-2 px-4 gap-4 no-scrollbar snap-x">
-           {BARBERS.map(barber => (
+           {barbers.length > 0 ? barbers.map(barber => (
              <div 
                 key={barber.id} 
                 onClick={() => setSelectedBarber(barber.id)}
@@ -245,11 +268,13 @@ const BookingStep2 = ({ onBack, onConfirm }: { onBack: () => void, onConfirm: ()
                   <p className="text-slate-900 dark:text-white text-sm font-semibold leading-normal">{barber.name}</p>
                   <div className="flex items-center justify-center gap-1 text-primary-gold">
                     <span className="material-symbols-outlined text-[14px] fill-current">star</span>
-                    <span className="text-xs font-medium">{barber.rating}</span>
+                    <span className="text-xs font-medium">{barber.rating || 5.0}</span>
                   </div>
                 </div>
              </div>
-           ))}
+           )) : (
+              <div className="w-full text-center py-4 text-slate-500 text-sm">Nenhum profissional disponível.</div>
+           )}
         </div>
       </section>
 

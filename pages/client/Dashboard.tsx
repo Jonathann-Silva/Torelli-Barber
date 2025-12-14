@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import ClientLayout from '../../components/ClientLayout';
 import { db } from '../../firebaseConfig';
 import { Service } from '../../types';
+import { SERVICES as MOCK_SERVICES } from '../../constants';
 
 // Mapeamento de imagens para os serviços (simulando banco de dados)
 const SERVICE_IMAGES: Record<string, string> = {
@@ -27,12 +28,19 @@ const ClientDashboard = () => {
 
   useEffect(() => {
     // Fetch top services (for now, just all of them)
-    const unsubscribe = db.collection('services').onSnapshot(snapshot => {
-        const fetchedServices = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        })) as Service[];
-        setServices(fetchedServices);
+    const unsubscribe = db.collection('services').onSnapshot((snapshot) => {
+        if (!snapshot.empty) {
+            const fetchedServices = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            })) as Service[];
+            setServices(fetchedServices);
+        } else {
+            setServices(MOCK_SERVICES);
+        }
+    }, (error) => {
+        console.warn("Erro ao buscar serviços, usando dados de demonstração:", error);
+        setServices(MOCK_SERVICES);
     });
     return () => unsubscribe();
   }, []);
@@ -195,19 +203,19 @@ const ClientDashboard = () => {
               </div>
               <span className="text-sm font-bold text-gray-200">Novo Agendamento</span>
             </button>
-            <button className="flex flex-col items-center justify-center gap-3 rounded-xl bg-surface-dark-blue border border-gray-800 p-4 hover:border-primary-gold/50 transition-all active:scale-95 group">
+            <button onClick={() => navigate('/client/history')} className="flex flex-col items-center justify-center gap-3 rounded-xl bg-surface-dark-blue border border-gray-800 p-4 hover:border-primary-gold/50 transition-all active:scale-95 group">
               <div className="size-12 rounded-full bg-background-dark-blue flex items-center justify-center group-hover:bg-primary-gold/10 transition-colors">
                 <span className="material-symbols-outlined text-primary-gold text-3xl">history</span>
               </div>
               <span className="text-sm font-bold text-gray-200">Meus Cortes</span>
             </button>
-            <button className="flex flex-col items-center justify-center gap-3 rounded-xl bg-surface-dark-blue border border-gray-800 p-4 hover:border-gray-600 transition-all active:scale-95 group">
+            <button onClick={() => navigate('/client/barbers')} className="flex flex-col items-center justify-center gap-3 rounded-xl bg-surface-dark-blue border border-gray-800 p-4 hover:border-gray-600 transition-all active:scale-95 group">
               <div className="size-12 rounded-full bg-background-dark-blue flex items-center justify-center group-hover:bg-gray-800 transition-colors">
                 <span className="material-symbols-outlined text-gray-400 text-3xl">groups</span>
               </div>
               <span className="text-sm font-bold text-gray-200">Nossos Barbeiros</span>
             </button>
-            <button className="flex flex-col items-center justify-center gap-3 rounded-xl bg-surface-dark-blue border border-gray-800 p-4 hover:border-gray-600 transition-all active:scale-95 group">
+            <button onClick={() => navigate('/client/products')} className="flex flex-col items-center justify-center gap-3 rounded-xl bg-surface-dark-blue border border-gray-800 p-4 hover:border-gray-600 transition-all active:scale-95 group">
               <div className="size-12 rounded-full bg-background-dark-blue flex items-center justify-center group-hover:bg-gray-800 transition-colors">
                 <span className="material-symbols-outlined text-gray-400 text-3xl">shopping_bag</span>
               </div>

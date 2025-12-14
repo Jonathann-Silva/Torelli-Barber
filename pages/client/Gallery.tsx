@@ -1,24 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ClientLayout from '../../components/ClientLayout';
+import { db } from '../../firebaseConfig';
 
-const GALLERY_IMAGES = [
-  { id: 1, category: 'Cortes', url: 'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?q=80&w=600&auto=format&fit=crop', title: 'Degradê Clássico' },
-  { id: 2, category: 'Barba', url: 'https://images.unsplash.com/photo-1621605815971-fbc98d665033?q=80&w=600&auto=format&fit=crop', title: 'Barba Lenhador' },
-  { id: 3, category: 'Cortes', url: 'https://images.unsplash.com/photo-1605497788044-5a32c7078486?q=80&w=600&auto=format&fit=crop', title: 'Corte Social' },
-  { id: 4, category: 'Ambiente', url: 'https://images.unsplash.com/photo-1503951914290-93a354cd2d92?q=80&w=600&auto=format&fit=crop', title: 'Nossa Cadeira' },
-  { id: 5, category: 'Cortes', url: 'https://images.unsplash.com/photo-1622286342621-4bd786c2447c?q=80&w=600&auto=format&fit=crop', title: 'Fade Moderno' },
-  { id: 6, category: 'Barba', url: 'https://images.unsplash.com/photo-1555465910-31f7f20a184d?q=80&w=600&auto=format&fit=crop', title: 'Bigode Estilizado' },
-  { id: 7, category: 'Ambiente', url: 'https://images.unsplash.com/photo-1634302086887-13b566695228?q=80&w=600&auto=format&fit=crop', title: 'Lounge' },
-];
+interface GalleryImage {
+  id: string;
+  url: string;
+}
 
 const ClientGallery = () => {
   const navigate = useNavigate();
-  const [filter, setFilter] = useState('Todos');
+  const [images, setImages] = useState<GalleryImage[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredImages = filter === 'Todos' 
-    ? GALLERY_IMAGES 
-    : GALLERY_IMAGES.filter(img => img.category === filter);
+  useEffect(() => {
+    const unsubscribe = db.collection('gallery').orderBy('uploadedAt', 'desc').onSnapshot(snapshot => {
+      const fetched = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as GalleryImage[];
+      setImages(fetched);
+      setLoading(false);
+    }, (error) => {
+        console.warn("Error fetching gallery:", error);
+        setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Limit to 5 images as requested
+  const displayImages = images.slice(0, 5);
 
   return (
     <ClientLayout>
@@ -32,35 +43,22 @@ const ClientGallery = () => {
       </header>
 
       <main className="px-4 py-4">
-        {/* Filters */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6 pb-2">
-           {['Todos', 'Cortes', 'Barba', 'Ambiente'].map(cat => (
-             <button 
-               key={cat}
-               onClick={() => setFilter(cat)}
-               className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-all ${
-                 filter === cat 
-                 ? 'bg-primary-gold text-black shadow-lg shadow-primary-gold/20' 
-                 : 'bg-white dark:bg-surface-dark-blue text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
-               }`}
-             >
-               {cat}
-             </button>
-           ))}
-        </div>
-
-        {/* Masonry-like Grid */}
-        <div className="columns-2 gap-4 space-y-4">
-          {filteredImages.map(img => (
-            <div key={img.id} className="break-inside-avoid rounded-2xl overflow-hidden bg-surface-dark-blue relative group cursor-pointer">
-              <img src={img.url} alt={img.title} className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-500" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
-                 <p className="text-white font-bold text-sm">{img.title}</p>
-                 <p className="text-primary-gold text-xs">{img.category}</p>
-              </div>
+        {loading ? (
+             <div className="flex justify-center py-10"><span className="size-8 border-2 border-primary-blue border-t-transparent rounded-full animate-spin"></span></div>
+        ) : displayImages.length > 0 ? (
+            <div className="columns-2 gap-4 space-y-4">
+            {displayImages.map(img => (
+                <div key={img.id} className="break-inside-avoid rounded-2xl overflow-hidden bg-surface-dark-blue relative group cursor-pointer">
+                <img src={img.url} alt="Galeria" className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-500" />
+                </div>
+            ))}
             </div>
-          ))}
-        </div>
+        ) : (
+            <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
+                 <span className="material-symbols-outlined text-4xl mb-2 text-slate-500">broken_image</span>
+                 <p className="text-slate-500">Galeria vazia</p>
+            </div>
+        )}
       </main>
     </ClientLayout>
   );

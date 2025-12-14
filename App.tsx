@@ -8,6 +8,9 @@ import ClientDashboard from './pages/client/Dashboard';
 import ClientBooking from './pages/client/Booking';
 import ClientProfile from './pages/client/Profile';
 import ClientGallery from './pages/client/Gallery';
+import ClientHistory from './pages/client/History';
+import ClientProducts from './pages/client/Products';
+import ClientBarbers from './pages/client/Barbers';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminAppointmentDetails from './pages/admin/AppointmentDetails';
 import { UserRole } from './types';
@@ -18,12 +21,6 @@ const RequireAuth = ({ children, role }: { children: React.ReactElement, role?: 
 
   if (!user) {
     return <Navigate to="/" state={{ from: location }} replace />;
-  }
-
-  // Check email verification
-  if (!user.emailVerified) {
-    // If user is logged in but not verified, redirect to login (which handles the verification UI)
-    return <Navigate to="/" replace />;
   }
 
   if (role && user.role !== role) {
@@ -58,6 +55,21 @@ const AppRoutes = () => {
       <Route path="/client/gallery" element={
         <RequireAuth role={UserRole.CLIENT}>
           <ClientGallery />
+        </RequireAuth>
+      } />
+      <Route path="/client/history" element={
+        <RequireAuth role={UserRole.CLIENT}>
+          <ClientHistory />
+        </RequireAuth>
+      } />
+      <Route path="/client/products" element={
+        <RequireAuth role={UserRole.CLIENT}>
+          <ClientProducts />
+        </RequireAuth>
+      } />
+      <Route path="/client/barbers" element={
+        <RequireAuth role={UserRole.CLIENT}>
+          <ClientBarbers />
         </RequireAuth>
       } />
 

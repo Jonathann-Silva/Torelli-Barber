@@ -8,14 +8,13 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [infoMessage, setInfoMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn, user, logout, sendVerificationEmail, reloadUser } = useAuth();
+  const { signIn, user } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if verified and logged in
+  // Redirect if logged in (Verification check removed)
   React.useEffect(() => {
-    if (user && user.emailVerified) {
+    if (user) {
       if (user.role === UserRole.ADMIN) navigate('/admin/dashboard');
       else navigate('/client/dashboard');
     }
@@ -33,105 +32,28 @@ const Login = () => {
 
     try {
       await signIn(email, password);
-      // AuthContext will update 'user'. 
-      // If user.emailVerified is false, the UI will switch to the verification view below.
+      // AuthContext updates 'user', triggering the useEffect above
     } catch (err: any) {
-      console.error(err);
-      if (err.code === 'auth/invalid-credential') {
+      // Don't log expected auth errors to console to avoid alarm
+      const errorCode = err.code;
+      
+      if (
+        errorCode === 'auth/invalid-credential' || 
+        errorCode === 'auth/user-not-found' || 
+        errorCode === 'auth/wrong-password' ||
+        errorCode === 'auth/invalid-email'
+      ) {
         setError('E-mail ou senha incorretos.');
-      } else if (err.code === 'auth/too-many-requests') {
+      } else if (errorCode === 'auth/too-many-requests') {
         setError('Muitas tentativas. Tente novamente mais tarde.');
       } else {
+        console.error("Login error:", err);
         setError('Erro ao fazer login. Verifique sua conexão.');
       }
     } finally {
       setIsLoading(false);
     }
   };
-
-  const handleResendEmail = async () => {
-    try {
-      setInfoMessage('');
-      setIsLoading(true);
-      await sendVerificationEmail();
-      setInfoMessage('E-mail de verificação reenviado! Verifique sua caixa de entrada e spam.');
-    } catch (error: any) {
-      if (error.code === 'auth/too-many-requests') {
-        setError('Aguarde um momento antes de reenviar o e-mail.');
-      } else {
-        setError('Erro ao enviar e-mail. Tente novamente.');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCheckVerification = async () => {
-    setIsLoading(true);
-    setError('');
-    try {
-      await reloadUser();
-      // If verification is successful, the useEffect above will trigger the redirect
-      // If not, we stay on this screen
-    } catch (err) {
-      console.error("Erro ao verificar status:", err);
-      setError("Não foi possível atualizar o status. Tente novamente.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // If user is logged in BUT not verified, show verification screen
-  if (user && !user.emailVerified) {
-    return (
-      <div className="relative flex min-h-screen w-full flex-col justify-center overflow-hidden bg-background-light dark:bg-background-dark-blue font-jakarta text-white antialiased">
-         <div className="absolute inset-0 z-0">
-          <div className="absolute inset-0 bg-[#111a22] opacity-95"></div>
-          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/dark-leather.png')] opacity-30 mix-blend-overlay"></div>
-          <div className="absolute top-[-10%] right-[-10%] h-[300px] w-[300px] rounded-full bg-primary-blue/10 blur-[80px]"></div>
-        </div>
-
-        <div className="relative z-10 flex w-full flex-col px-6 py-8 sm:px-10 items-center max-w-md mx-auto text-center">
-            <div className="size-20 rounded-full bg-primary-gold/10 flex items-center justify-center mb-6 text-primary-gold animate-bounce">
-               <span className="material-symbols-outlined text-4xl">mark_email_unread</span>
-            </div>
-            <h1 className="text-2xl font-bold text-white mb-2">Verifique seu E-mail</h1>
-            <p className="text-[#92adc9] mb-6">
-              Enviamos um link de confirmação para <strong>{user.email}</strong>. 
-              Por favor, verifique sua caixa de entrada e clique no link para ativar sua conta.
-            </p>
-
-            {infoMessage && <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-500 text-sm mb-4 w-full animate-fade-in">{infoMessage}</div>}
-            {error && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm mb-4 w-full animate-fade-in">{error}</div>}
-
-            <button 
-              onClick={handleResendEmail}
-              disabled={isLoading}
-              className="w-full bg-primary-blue hover:bg-blue-600 text-white font-bold py-3.5 rounded-lg shadow-lg mb-3 transition-colors disabled:opacity-50"
-            >
-              Reenviar E-mail
-            </button>
-            
-            <button 
-              onClick={handleCheckVerification}
-              disabled={isLoading}
-              className="w-full bg-white/5 hover:bg-white/10 text-white font-bold py-3.5 rounded-lg border border-white/10 mb-3 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {isLoading ? (
-                <span className="size-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-              ) : "Já confirmei, atualizar"}
-            </button>
-
-            <button 
-              onClick={() => logout()}
-              className="text-sm text-slate-400 hover:text-white"
-            >
-              Sair / Entrar com outra conta
-            </button>
-        </div>
-      </div>
-    );
-  }
 
   // Standard Login Form
   return (

@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { SERVICES } from '../../constants';
 import { useNotifications } from '../../context/NotificationContext';
 import { db } from '../../firebaseConfig';
+import { Barber } from '../../types';
 
 // --- Types ---
 interface Client {
@@ -51,8 +52,16 @@ interface AdminService {
 }
 
 interface GalleryImage {
-  id: number;
+  id: string;
   url: string;
+}
+
+interface AdminProduct {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  image: string;
 }
 
 // --- INITIAL STATE IS NOW EMPTY FOR REAL TESTING ---
@@ -83,20 +92,31 @@ const AdminDashboard = () => {
     lunchEnd: '13:00'
   });
   
-  // Services now start empty and load from DB
+  // Services, Barbers, Gallery, Products
   const [servicesList, setServicesList] = useState<AdminService[]>([]);
-
+  const [barbersList, setBarbersList] = useState<Barber[]>([]);
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
+  const [productsList, setProductsList] = useState<AdminProduct[]>([]);
+  
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   // --- Modal States ---
   const [showClientModal, setShowClientModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [showServiceModal, setShowServiceModal] = useState(false);
+  const [showBarberModal, setShowBarberModal] = useState(false);
+  const [showProductModal, setShowProductModal] = useState(false);
+  
   const [editingService, setEditingService] = useState<AdminService | null>(null);
 
   // Service Form State
   const [serviceForm, setServiceForm] = useState<Partial<AdminService>>({ name: '', price: 0, duration: 30, category: 'hair' });
+  
+  // Barber Form State
+  const [barberForm, setBarberForm] = useState({ name: '', specialty: '', image: '' });
+  
+  // Product Form State
+  const [productForm, setProductForm] = useState({ name: '', price: 0, category: 'Cabelo', image: '' });
   
   // Client Form
   const [newClientName, setNewClientName] = useState('');
@@ -109,9 +129,8 @@ const AdminDashboard = () => {
 
   // --- Logic Helpers ---
 
-  // Agenda Logic: Fetch appointments when selectedDay changes
+  // Agenda Logic
   useEffect(() => {
-    // Construct the date string to match Firestore format (YYYY-MM-DD)
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -135,7 +154,6 @@ const AdminDashboard = () => {
           } as AdminAppointment;
         });
 
-        // Sort by time
         fetchedAppointments.sort((a, b) => a.time.localeCompare(b.time));
         setAppointments(fetchedAppointments);
       }, (error) => {
@@ -145,7 +163,7 @@ const AdminDashboard = () => {
     return () => unsubscribe();
   }, [selectedDay]);
 
-  // Clients Logic: Fetch from Firestore
+  // Clients Logic
   useEffect(() => {
     const unsubscribe = db.collection('users')
       .where('role', '==', 'client')
@@ -156,7 +174,6 @@ const AdminDashboard = () => {
             id: doc.id,
             name: data.name || 'Sem nome',
             phone: data.phone || '',
-            // Default placeholder values as these are calculated fields not in user profile
             lastVisit: 'Novo', 
             totalSpent: 0,
             avatar: data.avatar || null,
@@ -164,36 +181,60 @@ const AdminDashboard = () => {
           } as Client;
         });
         setClients(fetchedClients);
-      }, error => {
-        console.error("Error fetching clients:", error);
       });
-      
     return () => unsubscribe();
   }, []);
 
-  // Services Logic: Fetch from Firestore
+  // Services Logic
   useEffect(() => {
     const unsubscribe = db.collection('services').onSnapshot(snapshot => {
-        if (snapshot.empty) {
-            setServicesList([]);
-        } else {
-            const fetchedServices = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            })) as AdminService[];
-            setServicesList(fetchedServices);
-        }
+        const fetchedServices = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as AdminService[];
+        setServicesList(fetchedServices);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Barbers Logic
+  useEffect(() => {
+    const unsubscribe = db.collection('barbers').onSnapshot(snapshot => {
+        const fetchedBarbers = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as Barber[];
+        setBarbersList(fetchedBarbers);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Gallery Logic
+  useEffect(() => {
+    const unsubscribe = db.collection('gallery').onSnapshot(snapshot => {
+        const fetchedGallery = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as GalleryImage[];
+        setGallery(fetchedGallery);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Products Logic
+  useEffect(() => {
+    const unsubscribe = db.collection('products').onSnapshot(snapshot => {
+        const fetchedProducts = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as AdminProduct[];
+        setProductsList(fetchedProducts);
     });
     return () => unsubscribe();
   }, []);
 
 
   const handleStatusChange = async (id: string, newStatus: 'confirmed' | 'cancelled') => {
-    // Update local state optimistic
-    setAppointments(prev => prev.map(app => 
-      app.id === id ? { ...app, status: newStatus } : app
-    ));
-
     try {
         await db.collection('appointments').doc(id).update({ 
             status: newStatus === 'confirmed' ? 'Confirmado' : 'Cancelado' 
@@ -224,23 +265,19 @@ const AdminDashboard = () => {
 
   const handleAddClient = async () => {
     if (!newClientName || !newClientPhone) return;
-    
     try {
-      // Add directly to Firestore
       await db.collection('users').add({
         name: newClientName,
         phone: newClientPhone,
         role: 'client',
         createdAt: new Date().toISOString(),
-        email: '', // Optional for manually added clients
+        email: '',
       });
-
       setShowClientModal(false);
       setNewClientName('');
       setNewClientPhone('');
     } catch (error) {
       console.error("Error adding client:", error);
-      alert("Erro ao adicionar cliente.");
     }
   };
 
@@ -269,42 +306,79 @@ const AdminDashboard = () => {
   // --- Settings Logic ---
   const handleSaveService = async () => {
     if (!serviceForm.name || !serviceForm.price || !serviceForm.duration) return;
-
     try {
         const payload = {
             name: serviceForm.name,
             price: Number(serviceForm.price),
             duration: Number(serviceForm.duration),
             category: serviceForm.category || 'hair',
-            // Default description and icon if missing
             description: 'Serviço especializado', 
             icon: 'content_cut'
         };
 
         if (editingService) {
-            // Update existing in Firestore
             await db.collection('services').doc(editingService.id).update(payload);
         } else {
-            // Add new to Firestore
             await db.collection('services').add(payload);
         }
-        
         setShowServiceModal(false);
         setEditingService(null);
         setServiceForm({ name: '', price: 0, duration: 30, category: 'hair' });
     } catch (error) {
         console.error("Error saving service:", error);
-        alert("Erro ao salvar serviço.");
     }
   };
 
   const handleDeleteService = async (id: string) => {
     if (window.confirm('Tem certeza que deseja excluir este serviço?')) {
-      try {
-        await db.collection('services').doc(id).delete();
-      } catch (error) {
-        console.error("Error deleting service:", error);
-      }
+      await db.collection('services').doc(id).delete();
+    }
+  };
+  
+  // Barber Logic
+  const handleSaveBarber = async () => {
+    if (!barberForm.name) return;
+    try {
+        await db.collection('barbers').add({
+            name: barberForm.name,
+            specialty: barberForm.specialty || 'Barbeiro',
+            image: barberForm.image || 'https://via.placeholder.com/150',
+            rating: 5.0,
+            reviews: 0
+        });
+        setShowBarberModal(false);
+        setBarberForm({ name: '', specialty: '', image: '' });
+    } catch (error) {
+        console.error("Error saving barber:", error);
+    }
+  };
+
+  const handleDeleteBarber = async (id: string) => {
+    if (window.confirm('Tem certeza que deseja remover este barbeiro?')) {
+        await db.collection('barbers').doc(id).delete();
+    }
+  };
+
+  // Product Logic
+  const handleSaveProduct = async () => {
+    if (!productForm.name || !productForm.price) return;
+    try {
+        await db.collection('products').add({
+            name: productForm.name,
+            price: Number(productForm.price),
+            category: productForm.category,
+            image: productForm.image || 'https://via.placeholder.com/150'
+        });
+        setShowProductModal(false);
+        setProductForm({ name: '', price: 0, category: 'Cabelo', image: '' });
+    } catch (error) {
+        console.error("Error saving product:", error);
+    }
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    if (window.confirm('Tem certeza que deseja excluir este produto?')) {
+        await db.collection('products').doc(id).delete();
     }
   };
 
@@ -319,37 +393,46 @@ const AdminDashboard = () => {
     setShowServiceModal(true);
   };
 
+  // Gallery Logic: Save to Firestore
   const handleGalleryUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         if (typeof reader.result === 'string') {
-          setGallery([...gallery, { id: Date.now(), url: reader.result }]);
+          try {
+             await db.collection('gallery').add({
+                 url: reader.result,
+                 uploadedAt: new Date().toISOString()
+             });
+          } catch(err) {
+              console.error("Error uploading image", err);
+              alert("Erro ao salvar imagem. Verifique se o arquivo não é muito grande.");
+          }
         }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const removeImage = (id: number) => {
-    setGallery(prev => prev.filter(img => img.id !== id));
+  const removeImage = async (id: string) => {
+    if(window.confirm("Remover imagem da galeria?")) {
+        try {
+            await db.collection('gallery').doc(id).delete();
+        } catch(err) {
+            console.error(err);
+        }
+    }
   };
 
-  // Helper to generate next few days
   const getDaysArray = () => {
     const arr = [];
     const today = new Date();
     const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
-    
-    // Show current day and next 5 days
     for(let i=0; i<6; i++) {
         const d = new Date(today);
         d.setDate(today.getDate() + i);
-        arr.push({
-            d: days[d.getDay()],
-            n: d.getDate().toString()
-        });
+        arr.push({ d: days[d.getDay()], n: d.getDate().toString() });
     }
     return arr;
   };
@@ -408,7 +491,6 @@ const AdminDashboard = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-           {/* Notification Bell */}
            <div className="relative">
               <button 
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} 
@@ -463,7 +545,6 @@ const AdminDashboard = () => {
       {/* AGENDA VIEW */}
       {activeTab === 'agenda' && (
         <>
-          {/* Date Scroller */}
           <div className="flex flex-col bg-background-light dark:bg-background-dark-brown px-4 pb-2 z-10 shadow-sm border-b border-black/5 dark:border-white/5">
             <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar pb-2 pt-2">
               {dateList.map(day => (
@@ -482,7 +563,6 @@ const AdminDashboard = () => {
 
           <main className="px-4 pt-4">
             <h2 className="sticky top-[64px] bg-background-light/95 dark:bg-background-dark-brown/95 backdrop-blur-sm px-1 pb-4 text-xl font-bold tracking-tight text-slate-900 dark:text-white z-10">Hoje, {selectedDay}</h2>
-            
             {appointments.length > 0 ? (
                 <div className="grid grid-cols-[50px_1fr] gap-x-3">
                   {appointments.map((app, index) => (
@@ -491,29 +571,9 @@ const AdminDashboard = () => {
                         <span className="text-xs font-medium text-slate-500 dark:text-[#8a8168]">{app.time}</span>
                         <div className={`w-[1px] bg-black/10 dark:bg-[#685a31] h-full absolute top-8 bottom-0 left-1/2 -translate-x-1/2 ${index === appointments.length - 1 ? 'hidden' : ''}`}></div>
                       </div>
-                      
                       <div className="pb-6">
-                        {app.type === 'slot' ? (
-                          <button className="w-full h-full min-h-[80px] rounded-xl border-2 border-dashed border-slate-300 dark:border-[#493f22] flex flex-col items-center justify-center gap-2 group hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                            <div className="flex items-center gap-2 text-slate-400 dark:text-[#8a8168] group-hover:text-primary-gold transition-colors">
-                              <span className="material-symbols-outlined">add_circle</span>
-                              <span className="text-sm font-medium">Horário Livre</span>
-                            </div>
-                          </button>
-                        ) : app.type === 'lunch' ? (
-                          <div className="relative flex items-center gap-4 p-4 rounded-xl bg-slate-100 dark:bg-surface-dark-brown/50 opacity-70">
-                              <div className="size-10 rounded-full bg-slate-200 dark:bg-white/10 flex items-center justify-center text-slate-500 dark:text-white">
-                                <span className="material-symbols-outlined">coffee</span>
-                              </div>
-                              <div>
-                                <h3 className="text-slate-900 dark:text-white font-bold text-base">{app.clientName}</h3>
-                                <p className="text-slate-500 dark:text-[#cbbc90] text-sm">{app.service}</p>
-                              </div>
-                          </div>
-                        ) : (
-                          <div className={`relative flex flex-col p-4 rounded-xl bg-white dark:bg-surface-dark-brown shadow-sm transition-all border-l-4 
+                         <div className={`relative flex flex-col p-4 rounded-xl bg-white dark:bg-surface-dark-brown shadow-sm transition-all border-l-4 
                             ${app.status === 'confirmed' ? 'border-green-500' : app.status === 'cancelled' ? 'border-red-500 opacity-60' : 'border-primary-gold'}`}>
-                            
                             <div className="flex justify-between items-start mb-1">
                               <h3 className="text-slate-900 dark:text-white font-bold text-base">{app.clientName}</h3>
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide 
@@ -522,22 +582,13 @@ const AdminDashboard = () => {
                               </span>
                             </div>
                             <p className="text-slate-500 dark:text-[#cbbc90] text-sm">{app.service}</p>
-                            
                             {app.status === 'pending' && (
                               <div className="mt-3 flex gap-2">
                                 <button onClick={() => handleStatusChange(app.id, 'confirmed')} className="flex-1 py-2 rounded-lg bg-primary-gold text-black text-xs font-bold shadow-sm hover:brightness-110">Aceitar</button>
                                 <button onClick={() => handleStatusChange(app.id, 'cancelled')} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-white text-xs font-medium hover:bg-red-500/20 hover:text-red-500">Recusar</button>
                               </div>
                             )}
-                            
-                            {app.status === 'confirmed' && (
-                              <div className="flex items-center gap-2 mt-3">
-                                  <button onClick={() => navigate('/admin/appointment/101')} className="flex-1 py-2 rounded-lg bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-black/5 dark:hover:bg-white/10">Ver Detalhes</button>
-                                  <button className="size-8 rounded-full flex items-center justify-center bg-slate-100 dark:bg-white/5 text-green-600 dark:text-green-400"><span className="material-symbols-outlined text-lg">chat</span></button>
-                              </div>
-                            )}
                           </div>
-                        )}
                       </div>
                     </React.Fragment>
                   ))}
@@ -566,7 +617,6 @@ const AdminDashboard = () => {
                className="w-full pl-10 pr-4 py-3 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white outline-none focus:border-primary-gold transition-colors" 
               />
           </div>
-
           <div className="flex flex-col gap-3 pb-20">
              {filteredClients.length > 0 ? filteredClients.map(client => (
                <div key={client.id} className="flex items-center gap-4 p-4 rounded-xl bg-white dark:bg-surface-dark-brown border border-slate-100 dark:border-white/5 shadow-sm active:scale-[0.99] transition-transform">
@@ -587,12 +637,6 @@ const AdminDashboard = () => {
                      <p className="text-xs text-slate-500 dark:text-slate-400">{client.phone}</p>
                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Última visita: {client.lastVisit}</p>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
-                     <span className="text-xs font-bold text-primary-gold-dark dark:text-primary-gold">R$ {client.totalSpent}</span>
-                     <button className="p-2 rounded-full bg-slate-50 dark:bg-white/5 text-slate-400 dark:text-slate-400 hover:text-green-500 dark:hover:text-green-400">
-                        <span className="material-symbols-outlined text-[20px]">chat</span>
-                     </button>
-                  </div>
                </div>
              )) : (
                <div className="flex flex-col items-center justify-center py-10 opacity-50">
@@ -601,7 +645,6 @@ const AdminDashboard = () => {
                </div>
              )}
           </div>
-
           <button onClick={() => setShowClientModal(true)} className="fixed bottom-24 right-5 z-40 size-14 rounded-full bg-primary-gold text-black shadow-lg shadow-primary-gold/30 flex items-center justify-center transition-transform active:scale-95 hover:bg-[#eebb14]">
             <span className="material-symbols-outlined text-3xl">person_add</span>
           </button>
@@ -629,13 +672,10 @@ const AdminDashboard = () => {
                   <p className="text-[10px] mt-1 text-slate-400 dark:text-slate-500">Saldo atual</p>
                </div>
             </div>
-
             <div className="pb-20">
                <div className="flex items-center justify-between mb-3">
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white">Transações Recentes</h3>
-                  <button className="text-xs font-bold text-primary-blue hover:underline">Ver tudo</button>
                </div>
-               
                {transactions.length > 0 ? (
                     <div className="flex flex-col gap-0 rounded-xl overflow-hidden border border-slate-100 dark:border-white/5 bg-white dark:bg-surface-dark-brown">
                         {transactions.map((t, i) => (
@@ -662,7 +702,6 @@ const AdminDashboard = () => {
                     </div>
                )}
             </div>
-            
             <button onClick={() => setShowTransactionModal(true)} className="fixed bottom-24 right-5 z-40 size-14 rounded-full bg-primary-gold text-black shadow-lg shadow-primary-gold/30 flex items-center justify-center transition-transform active:scale-95 hover:bg-[#eebb14]">
                 <span className="material-symbols-outlined text-3xl">add</span>
             </button>
@@ -673,43 +712,14 @@ const AdminDashboard = () => {
       {activeTab === 'settings' && (
          <main className="px-4 pt-4 flex flex-col gap-8 pb-24">
             
-            {/* 1. Horários de Funcionamento */}
-            <section>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary-gold">schedule</span>
-                Horário de Funcionamento
-              </h3>
-              <div className="bg-white dark:bg-surface-dark-brown border border-slate-100 dark:border-white/5 rounded-xl p-5 shadow-sm space-y-4">
-                 <div className="grid grid-cols-2 gap-4">
-                   <div>
-                     <label className="text-xs text-slate-500 font-bold uppercase mb-1 block">Abertura</label>
-                     <input type="time" value={shopHours.open} onChange={e => setShopHours({...shopHours, open: e.target.value})} className="w-full bg-slate-100 dark:bg-white/5 rounded-lg p-2 text-slate-900 dark:text-white font-semibold border-none outline-none" />
-                   </div>
-                   <div>
-                     <label className="text-xs text-slate-500 font-bold uppercase mb-1 block">Fechamento</label>
-                     <input type="time" value={shopHours.close} onChange={e => setShopHours({...shopHours, close: e.target.value})} className="w-full bg-slate-100 dark:bg-white/5 rounded-lg p-2 text-slate-900 dark:text-white font-semibold border-none outline-none" />
-                   </div>
-                 </div>
-                 <div className="h-px bg-slate-100 dark:bg-white/5"></div>
-                 <div>
-                    <label className="text-xs text-slate-500 font-bold uppercase mb-2 block">Horário de Almoço</label>
-                    <div className="flex items-center gap-3">
-                      <input type="time" value={shopHours.lunchStart} onChange={e => setShopHours({...shopHours, lunchStart: e.target.value})} className="flex-1 bg-slate-100 dark:bg-white/5 rounded-lg p-2 text-slate-900 dark:text-white font-semibold border-none outline-none" />
-                      <span className="text-slate-400">até</span>
-                      <input type="time" value={shopHours.lunchEnd} onChange={e => setShopHours({...shopHours, lunchEnd: e.target.value})} className="flex-1 bg-slate-100 dark:bg-white/5 rounded-lg p-2 text-slate-900 dark:text-white font-semibold border-none outline-none" />
-                    </div>
-                 </div>
-              </div>
-            </section>
-
-            {/* 2. Catálogo de Serviços */}
+            {/* 1. Services */}
             <section>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <span className="material-symbols-outlined text-primary-gold">content_cut</span>
                   Serviços
                 </h3>
-                <button onClick={() => openServiceModal()} className="text-xs font-bold text-primary-blue bg-primary-blue/10 px-3 py-1.5 rounded-full hover:bg-primary-blue/20">Adicionar Novo</button>
+                <button onClick={() => openServiceModal()} className="text-xs font-bold text-primary-blue bg-primary-blue/10 px-3 py-1.5 rounded-full hover:bg-primary-blue/20">Adicionar</button>
               </div>
               <div className="bg-white dark:bg-surface-dark-brown border border-slate-100 dark:border-white/5 rounded-xl overflow-hidden shadow-sm">
                  {servicesList.length > 0 ? servicesList.map((service, idx) => (
@@ -718,8 +728,6 @@ const AdminDashboard = () => {
                         <span className="font-bold text-slate-900 dark:text-white">{service.name}</span>
                         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1">
                            <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">schedule</span> {service.duration} min</span>
-                           <span>•</span>
-                           <span className="uppercase">{service.category === 'beard' ? 'Barba' : service.category === 'hair' ? 'Cabelo' : service.category === 'combo' ? 'Combo' : 'Outro'}</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
@@ -730,7 +738,37 @@ const AdminDashboard = () => {
                  )) : (
                     <div className="p-8 text-center text-slate-500">
                         <p>Nenhum serviço cadastrado.</p>
-                        <button onClick={() => openServiceModal()} className="mt-2 text-primary-blue font-bold text-sm">Adicionar o primeiro</button>
+                    </div>
+                 )}
+              </div>
+            </section>
+            
+            {/* 2. Barbers */}
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary-gold">badge</span>
+                  Profissionais
+                </h3>
+                <button onClick={() => setShowBarberModal(true)} className="text-xs font-bold text-primary-blue bg-primary-blue/10 px-3 py-1.5 rounded-full hover:bg-primary-blue/20">Adicionar</button>
+              </div>
+              <div className="bg-white dark:bg-surface-dark-brown border border-slate-100 dark:border-white/5 rounded-xl overflow-hidden shadow-sm">
+                 {barbersList.length > 0 ? barbersList.map((barber, idx) => (
+                   <div key={barber.id} className={`p-4 flex items-center justify-between ${idx !== barbersList.length -1 ? 'border-b border-slate-100 dark:border-white/5' : ''} hover:bg-slate-50 dark:hover:bg-white/5 transition-colors`}>
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-cover bg-center border border-slate-200 dark:border-white/10" style={{ backgroundImage: `url("${barber.image}")` }}></div>
+                        <span className="font-bold text-slate-900 dark:text-white">{barber.name}</span>
+                      </div>
+                      <button 
+                         onClick={() => handleDeleteBarber(barber.id)}
+                         className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                      >
+                         <span className="material-symbols-outlined">delete</span>
+                      </button>
+                   </div>
+                 )) : (
+                    <div className="p-8 text-center text-slate-500">
+                        <p>Nenhum barbeiro cadastrado.</p>
                     </div>
                  )}
               </div>
@@ -764,6 +802,41 @@ const AdminDashboard = () => {
                  </button>
               </div>
             </section>
+
+            {/* 4. Store Products */}
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary-gold">shopping_bag</span>
+                  Produtos da Loja
+                </h3>
+                <button onClick={() => setShowProductModal(true)} className="text-xs font-bold text-primary-blue bg-primary-blue/10 px-3 py-1.5 rounded-full hover:bg-primary-blue/20">Adicionar</button>
+              </div>
+              <div className="bg-white dark:bg-surface-dark-brown border border-slate-100 dark:border-white/5 rounded-xl overflow-hidden shadow-sm">
+                 {productsList.length > 0 ? productsList.map((product, idx) => (
+                   <div key={product.id} className={`p-4 flex items-center justify-between ${idx !== productsList.length -1 ? 'border-b border-slate-100 dark:border-white/5' : ''} hover:bg-slate-50 dark:hover:bg-white/5 transition-colors`}>
+                      <div className="flex items-center gap-3">
+                         <div className="h-10 w-10 rounded-lg bg-cover bg-center border border-slate-200 dark:border-white/10" style={{ backgroundImage: `url("${product.image}")` }}></div>
+                         <div className="flex flex-col">
+                            <span className="font-bold text-slate-900 dark:text-white">{product.name}</span>
+                            <span className="text-xs text-slate-500">{product.category}</span>
+                         </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                         <span className="font-bold text-primary-gold">R$ {product.price.toFixed(2)}</span>
+                         <button onClick={() => handleDeleteProduct(product.id)} className="p-2 text-slate-400 hover:text-red-500">
+                            <span className="material-symbols-outlined">delete</span>
+                         </button>
+                      </div>
+                   </div>
+                 )) : (
+                    <div className="p-8 text-center text-slate-500">
+                        <p>Nenhum produto cadastrado.</p>
+                    </div>
+                 )}
+              </div>
+            </section>
+
          </main>
       )}
 
@@ -870,6 +943,119 @@ const AdminDashboard = () => {
            </div>
         </div>
       )}
+      
+      {/* Barber Add Modal */}
+      {showBarberModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowBarberModal(false)}></div>
+           <div className="relative bg-background-light dark:bg-[#1a160a] w-full max-w-sm rounded-2xl p-6 border border-white/10 animate-fade-in shadow-2xl">
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">Adicionar Barbeiro</h3>
+              
+              <div className="space-y-4">
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nome</label>
+                    <input 
+                      type="text" 
+                      value={barberForm.name}
+                      onChange={e => setBarberForm({...barberForm, name: e.target.value})}
+                      className="w-full mt-1 bg-white dark:bg-white/5 border border-slate-300 dark:border-white/10 rounded-lg p-3 text-slate-900 dark:text-white outline-none focus:border-primary-gold"
+                      placeholder="Ex: Carlos Silva"
+                    />
+                 </div>
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Especialidade</label>
+                    <input 
+                      type="text" 
+                      value={barberForm.specialty}
+                      onChange={e => setBarberForm({...barberForm, specialty: e.target.value})}
+                      className="w-full mt-1 bg-white dark:bg-white/5 border border-slate-300 dark:border-white/10 rounded-lg p-3 text-slate-900 dark:text-white outline-none focus:border-primary-gold"
+                      placeholder="Ex: Cortes Clássicos"
+                    />
+                 </div>
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">URL da Foto</label>
+                    <input 
+                      type="text" 
+                      value={barberForm.image}
+                      onChange={e => setBarberForm({...barberForm, image: e.target.value})}
+                      className="w-full mt-1 bg-white dark:bg-white/5 border border-slate-300 dark:border-white/10 rounded-lg p-3 text-slate-900 dark:text-white outline-none focus:border-primary-gold"
+                      placeholder="https://..."
+                    />
+                 </div>
+                 
+                 <button onClick={handleSaveBarber} className="w-full bg-primary-gold text-black font-bold py-3.5 rounded-xl hover:bg-[#eebb14] transition-colors mt-2">
+                    Adicionar
+                 </button>
+              </div>
+              <button onClick={() => setShowBarberModal(false)} className="absolute top-4 right-4 text-slate-500 hover:text-slate-800 dark:hover:text-white">
+                 <span className="material-symbols-outlined">close</span>
+              </button>
+           </div>
+        </div>
+      )}
+
+      {/* Product Add Modal */}
+      {showProductModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowProductModal(false)}></div>
+           <div className="relative bg-background-light dark:bg-[#1a160a] w-full max-w-sm rounded-2xl p-6 border border-white/10 animate-fade-in shadow-2xl">
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">Novo Produto</h3>
+              
+              <div className="space-y-4">
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nome do Produto</label>
+                    <input 
+                      type="text" 
+                      value={productForm.name}
+                      onChange={e => setProductForm({...productForm, name: e.target.value})}
+                      className="w-full mt-1 bg-white dark:bg-white/5 border border-slate-300 dark:border-white/10 rounded-lg p-3 text-slate-900 dark:text-white outline-none focus:border-primary-gold"
+                      placeholder="Ex: Pomada Matte"
+                    />
+                 </div>
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Preço (R$)</label>
+                    <input 
+                      type="number" 
+                      value={productForm.price}
+                      onChange={e => setProductForm({...productForm, price: parseFloat(e.target.value)})}
+                      className="w-full mt-1 bg-white dark:bg-white/5 border border-slate-300 dark:border-white/10 rounded-lg p-3 text-slate-900 dark:text-white outline-none focus:border-primary-gold"
+                      placeholder="0.00"
+                    />
+                 </div>
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Categoria</label>
+                    <select 
+                       value={productForm.category}
+                       onChange={e => setProductForm({...productForm, category: e.target.value})}
+                       className="w-full mt-1 bg-white dark:bg-[#1a160a] border border-slate-300 dark:border-white/10 rounded-lg p-3 text-slate-900 dark:text-white outline-none focus:border-primary-gold"
+                    >
+                       <option value="Cabelo">Cabelo</option>
+                       <option value="Barba">Barba</option>
+                       <option value="Acessórios">Acessórios</option>
+                       <option value="Outros">Outros</option>
+                    </select>
+                 </div>
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">URL da Imagem</label>
+                    <input 
+                      type="text" 
+                      value={productForm.image}
+                      onChange={e => setProductForm({...productForm, image: e.target.value})}
+                      className="w-full mt-1 bg-white dark:bg-white/5 border border-slate-300 dark:border-white/10 rounded-lg p-3 text-slate-900 dark:text-white outline-none focus:border-primary-gold"
+                      placeholder="https://..."
+                    />
+                 </div>
+                 
+                 <button onClick={handleSaveProduct} className="w-full bg-primary-gold text-black font-bold py-3.5 rounded-xl hover:bg-[#eebb14] transition-colors mt-2">
+                    Salvar Produto
+                 </button>
+              </div>
+              <button onClick={() => setShowProductModal(false)} className="absolute top-4 right-4 text-slate-500 hover:text-slate-800 dark:hover:text-white">
+                 <span className="material-symbols-outlined">close</span>
+              </button>
+           </div>
+        </div>
+      )}
 
       {/* Add Client Modal */}
       {showClientModal && (
@@ -916,7 +1102,6 @@ const AdminDashboard = () => {
            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowTransactionModal(false)}></div>
            <div className="relative bg-background-light dark:bg-[#1a160a] w-full max-w-sm rounded-2xl p-6 border border-white/10 animate-fade-in shadow-2xl">
               <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">Nova Transação</h3>
-              
               <div className="flex gap-2 mb-4 p-1 bg-slate-200 dark:bg-white/5 rounded-lg">
                  <button 
                    onClick={() => setNewTransType('in')} 
@@ -929,7 +1114,6 @@ const AdminDashboard = () => {
                    Saída
                  </button>
               </div>
-
               <div className="space-y-4">
                  <div>
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Descrição</label>
